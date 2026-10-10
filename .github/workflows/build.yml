@@ -1,0 +1,22 @@
+name: build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build armeabi-v7a
+        run: |
+          CXX=$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++
+          $CXX -shared -fPIC -O2 -std=c++17 -fvisibility=hidden -o libb3d.so src/b3d.cpp -lEGL -lGLESv2 -llog -ldl
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest -y --cleanup-tag || true
+          gh release create latest libb3d.so --title latest --notes "auto build"
