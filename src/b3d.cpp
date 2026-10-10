@@ -133,7 +133,12 @@ EXPORT int b3d_init(void) {
     if (!hEGL) { blog("ERROR dlopen libEGL"); return 0; }
     void* a = dlsym(hEGL, "eglSwapBuffers");
     if (!a) { blog("ERROR sym eglSwapBuffers"); return 0; }
-    if (!gotHook(a, (void*)h_Swap, (void**)&o_Swap)) { blog("ERROR GOT hook gagal"); return 0; }
+    void* hD = dlopen("libdobby.so", RTLD_NOW | RTLD_GLOBAL);
+    int (*dh)(void*, void*, void**) = hD ? (int (*)(void*, void*, void**))dlsym(hD, "DobbyHook") : nullptr;
+    if (dh) {
+        if (dh(a, (void*)h_Swap, (void**)&o_Swap) != 0) { blog("ERROR DobbyHook gagal"); return 0; }
+        blog("hook via Dobby");
+    } else if (!gotHook(a, (void*)h_Swap, (void**)&o_Swap)) { blog("ERROR libdobby.so tidak ada & GOT gagal"); return 0; }
     inited = 1;
     blog("b3d_init OK (M1)");
     return 1;
