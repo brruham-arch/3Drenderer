@@ -13,7 +13,7 @@ jobs:
       - name: Build armeabi-v7a
         run: |
           CXX=$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++
-          $CXX -shared -fPIC -O2 -std=c++17 -fvisibility=hidden -o libb3d.so src/b3d.cpp -lEGL -lGLESv2 -llog -ldl
+          $CXX -shared -fPIC -O2 -std=c++17 -fvisibility=hidden -static-libstdc++ -o libb3d.so src/b3d.cpp -lEGL -lGLESv2 -llog -ldl
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
