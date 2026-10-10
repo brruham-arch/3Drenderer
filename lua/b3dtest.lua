@@ -71,6 +71,14 @@ function main()
         sampRegisterChatCommand('b3dm', function() preset = preset % 6 + 1; lib.b3d_orient(preset); say('orientasi '..preset..'/6') end)
         sampRegisterChatCommand('b3dy', function(a) YAWOFF = tonumber(a) or math.pi; say('yawoff '..YAWOFF) end)
         sampRegisterChatCommand('b3ds', function(a) SIZE = tonumber(a) or 1; say('size '..SIZE) end)
+        sampRegisterChatCommand('b3dl', function(a)
+            local n = (a and a ~= '') and a or 'model'
+            local m = find(n..'.bin')
+            local x0 = find(n..'_tex0.png') or find(n..'_tex0.jpg')
+            local x1 = find(n..'_tex1.png') or find(n..'_tex1.jpg') or find(n..'_tex2.png') or find(n..'_tex2.jpg') or ''
+            if not (m and x0) then say('file '..n..' tidak ketemu'); return end
+            say(lib.b3d_load(m, x0, x1) == 1 and ('dimuat: '..n) or 'gagal, lihat b3d_log.txt')
+        end)
         ready = true
         say('OK. /b3d /b3dm /b3dy /b3ds')
     end)
