@@ -2,20 +2,44 @@ script_name('b3dpet')
 local ffi = require 'ffi'
 local imgui = require 'mimgui'
 local LOG = '/storage/emulated/0/Download/b3dlua_log.txt'
+local CFG = '/storage/emulated/0/Download/b3d_config.ini'
 local function L(s) local f = io.open(LOG, 'a'); if f then f:write(s..'\n'); f:close() end end
 local function say(s) L(s); pcall(sampAddChatMessage, '[b3d] '..s, -1) end
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
 local function angDiff(a,b) return (a-b+math.pi)%(2*math.pi)-math.pi end
+local S = MONET_DPI_SCALE or 1
 
 local lib, ready, on, errShown = nil, false, true, false
-local preset = 1
-local SIZE, YAWOFF = 1.0, math.pi
-local FLAP = 8            -- kecepatan kepak (pose/detik), /b3dv
-local BOB, PIT = 0.05, 0.15
-local TILT, CLIMB, ROLL = 0.25, 0.04, 0.5
-local SIDE, UP, FWD = 1.2, 1.0, -0.5   -- posisi dekat pemain, /b3dd
-local WR, MAXV = 0.8, 22
-local SWAY_LR, SWAY_LR_MAX, SWAY_UD, SWAY_UD_MAX = 0.35, 4.0, 0.25, 2.5
+local preset = 6
+local K = {SIZE=1, FLAP=500, MAXV=22, CHASE=10, ACCEL=3.5, WR=0.8, SIDE=1.2, UP=1.0, FWD=-0.5,
+           BOB=0.05, PIT=0.15, TILT=0.25, CLIMB=0.04, ROLL=0.5, YAWOFF=math.pi, SWAY_LR=0.35, SWAY_UD=0.25}
+local ITEMS = {
+    {'SIZE',0.1,3,'ukuran'}, {'FLAP',0,1000,'kecepatan kepak'}, {'MAXV',1,80,'kecepatan terbang maks'},
+    {'CHASE',1,30,'kuat mengejar target'}, {'ACCEL',1,15,'akselerasi'}, {'WR',0,3,'radius jelajah'},
+    {'SIDE',-3,3,'posisi kanan'}, {'UP',0,3,'posisi atas'}, {'FWD',-3,3,'posisi depan'},
+    {'BOB',0,0.3,'naik-turun badan'}, {'PIT',0,0.6,'goyang kepala'}, {'TILT',0,0.8,'condong saat melaju'},
+    {'CLIMB',0,0.15,'dongak saat naik'}, {'ROLL',-1.5,1.5,'miring saat belok'}, {'YAWOFF',-3.14,3.14,'arah hadap'},
+    {'SWAY_LR',0,1,'goyang kiri-kanan'}, {'SWAY_UD',0,1,'goyang atas-bawah'},
+}
+local sl = {}
+for _,it in ipairs(ITEMS) do sl[it[1]] = imgui.new.float(K[it[1]]) end
+local show = imgui.new.bool(false)
+local SWAY_LR_MAX, SWAY_UD_MAX = 4.0, 2.5
+
+local function pull() for _,it in ipairs(ITEMS) do sl[it[1]][0] = K[it[1]] end end
+local function save()
+    local f = io.open(CFG, 'w'); if not f then return end
+    for _,it in ipairs(ITEMS) do f:write(string.format('%s=%.4f\n', it[1], K[it[1]])) end
+    f:write('PRESET='..preset..'\n'); f:close()
+end
+local function loadCfg()
+    local f = io.open(CFG, 'r'); if not f then return end
+    for line in f:lines() do
+        local k,v = line:match('^([%w_]+)=(.+)$'); v = tonumber(v)
+        if k and v then if k == 'PRESET' then preset = clamp(math.floor(v),1,6) elseif K[k] ~= nil then K[k] = v end end
+    end
+    f:close()
+end
 
 math.randomseed(os.time()); math.random(); math.random()
 local pet = {x=0,y=0,z=0,vx=0,vy=0,vz=0,yaw=0,roll=0,wt=0,wox=0,woy=0,woz=0,gz=0,gt=0,seed=math.random()*10,set=false}
@@ -52,7 +76,7 @@ local function fly(dt)
     local hr=math.rad(getCharHeading(PLAYER_PED))
     local fx,fy=-math.sin(hr),math.cos(hr)
     local rx,ry=fy,-fx
-    local sx,sy,sz=px+rx*SIDE+fx*FWD, py+ry*SIDE+fy*FWD, pz+UP
+    local sx,sy,sz=px+rx*K.SIDE+fx*K.FWD, py+ry*K.SIDE+fy*K.FWD, pz+K.UP
     local pyaw=hr+math.pi/2
     local jx,jy=pet.x-px,pet.y-py
     if not pet.set or jx*jx+jy*jy>3600 then
@@ -63,7 +87,7 @@ local function fly(dt)
     pet.wt=pet.wt-dt
     if pet.wt<=0 then
         pet.wt=0.8+math.random()*1.6
-        local a,r=math.random()*6.2832,math.random()*WR
+        local a,r=math.random()*6.2832,math.random()*K.WR
         pet.wox,pet.woy,pet.woz=math.cos(a)*r,math.sin(a)*r,(math.random()-0.5)*0.8
     end
     local tx,ty,tz=sx+P.vx*0.5+pet.wox, sy+P.vy*0.5+pet.woy, sz+pet.woz
@@ -71,18 +95,17 @@ local function fly(dt)
     local dl=math.sqrt(ddx*ddx+ddy*ddy)
     if dl>0.05 then
         local qx,qy=-ddy/dl,ddx/dl
-        local amp=clamp(dl*SWAY_LR,0,SWAY_LR_MAX)
+        local amp=clamp(dl*K.SWAY_LR,0,SWAY_LR_MAX)
         local w=math.sin(T*1.7+pet.seed)*0.6+math.sin(T*3.9+pet.seed*2.3)*0.4
         tx=tx+qx*w*amp; ty=ty+qy*w*amp
         local v=math.sin(T*2.3+pet.seed*1.7)*0.65+math.sin(T*5.1+pet.seed)*0.35
-        tz=tz+v*clamp(dl*SWAY_UD,0,SWAY_UD_MAX)
+        tz=tz+v*clamp(dl*K.SWAY_UD,0,SWAY_UD_MAX)
     end
-    local maxv=math.min(MAXV,6+P.spd*1.6)
     local dx,dy,dz=tx-pet.x,ty-pet.y,tz-pet.z
     local d=math.sqrt(dx*dx+dy*dy+dz*dz)
-    local want=math.min(maxv,d*2.4)
+    local want=math.min(K.MAXV,d*K.CHASE)
     local ux,uy,uz=0,0,0; if d>1e-4 then ux,uy,uz=dx/d,dy/d,dz/d end
-    local a=math.min(1,dt*3.5)
+    local a=math.min(1,dt*K.ACCEL)
     pet.vx=pet.vx+(ux*want-pet.vx)*a
     pet.vy=pet.vy+(uy*want-pet.vy)*a
     pet.vz=pet.vz+(uz*want-pet.vz)*a
@@ -96,9 +119,9 @@ local function fly(dt)
     local nyaw=pet.yaw+angDiff(want_yaw,pet.yaw)*math.min(1,5*dt)
     local yrate=angDiff(nyaw,pet.yaw)/dt
     pet.yaw=nyaw
-    local rt=clamp(yrate*0.25,-1,1)*ROLL*math.min(1,hs/6)
+    local rt=clamp(yrate*0.25,-1,1)*K.ROLL*math.min(1,hs/6)
     pet.roll=pet.roll+(rt-pet.roll)*math.min(1,dt*5)
-    return math.sqrt(pet.vx*pet.vx+pet.vy*pet.vy+pet.vz*pet.vz), hs
+    return math.sqrt(pet.vx*pet.vx+pet.vy*pet.vy+pet.vz*pet.vz)
 end
 
 local function frame()
@@ -107,11 +130,11 @@ local function frame()
     updateCamera(W,H)
     if not cam.ok then lib.b3d_set(0,0,0,0,0,0,0,0,1,1,0); return end
     local spd = fly(dt)
-    PH = (PH + dt*FLAP*(1+math.min(spd,12)*0.05+math.max(pet.vz,0)*0.08)) % 5040
+    PH = (PH + dt*K.FLAP*(1+math.min(spd,12)*0.05+math.max(pet.vz,0)*0.08)) % 5040
     lib.b3d_cam(cam.x,cam.y,cam.z, cam.fx,cam.fy,cam.fz, cam.rx,cam.ry, cam.ux,cam.uy,cam.uz, cam.Fx,cam.Fy, W,H)
-    local bob = math.sin(T*6)*BOB
-    local pit = math.cos(T*6)*PIT - math.min(spd/10,1)*TILT + clamp(pet.vz,-6,6)*CLIMB
-    lib.b3d_set(pet.x,pet.y,pet.z, pet.yaw+YAWOFF, pit, pet.roll, bob, PH, SIZE, 1, on and 1 or 0)
+    local bob = math.sin(T*6)*K.BOB
+    local pit = math.cos(T*6)*K.PIT - math.min(spd/10,1)*K.TILT + clamp(pet.vz,-6,6)*K.CLIMB
+    lib.b3d_set(pet.x,pet.y,pet.z, pet.yaw+K.YAWOFF, pit, pet.roll, bob, PH, K.SIZE, 1, on and 1 or 0)
 end
 
 local sub = imgui.OnFrame(function() return ready end, function()
@@ -119,6 +142,24 @@ local sub = imgui.OnFrame(function() return ready end, function()
     if not ok and not errShown then errShown = true; say('ERR frame: '..tostring(e)) end
 end)
 sub.HideCursor = true; sub.LockPlayer = false
+
+imgui.OnFrame(function() return show[0] and ready end, function()
+    imgui.SetNextWindowSize(imgui.ImVec2(460*S, 560*S), imgui.Cond.FirstUseEver)
+    imgui.Begin('Peliharaan 3D', show)
+    for _,it in ipairs(ITEMS) do
+        local k = it[1]
+        if imgui.SliderFloat(it[4]..' ('..k..')', sl[k], it[2], it[3]) then K[k] = sl[k][0] end
+    end
+    imgui.Text('Orientasi: '..preset..'/6')
+    imgui.SameLine()
+    if imgui.Button('Ganti##pre', imgui.ImVec2(100*S, 36*S)) then preset = preset%6+1; lib.b3d_orient(preset) end
+    if imgui.Button(on and 'Sembunyikan' or 'Tampilkan', imgui.ImVec2(160*S, 40*S)) then on = not on end
+    imgui.SameLine()
+    if imgui.Button('Simpan', imgui.ImVec2(120*S, 40*S)) then save(); say('tersimpan') end
+    imgui.SameLine()
+    if imgui.Button('Tutup', imgui.ImVec2(120*S, 40*S)) then show[0] = false end
+    imgui.End()
+end)
 
 function main()
     os.remove(LOG)
@@ -140,6 +181,7 @@ function main()
         ]])
         lib = ffi.load(dst)
         if lib.b3d_init() ~= 1 then error('b3d_init gagal, lihat b3d_log.txt') end
+        loadCfg(); pull(); lib.b3d_orient(preset)
 
         local dirs = {getWorkingDirectory()..'/assets/images/', '/storage/emulated/0/Download/'}
         local function find(n) for _,d in ipairs(dirs) do if doesFileExist(d..n) then return d..n end end end
@@ -154,23 +196,11 @@ function main()
         local ok1, e1 = load('phoenix'); if not ok1 then ok1, e1 = load('model') end
         if not ok1 then error(e1) end
 
-        local function num(a,d) return tonumber(a) or d end
+        sampRegisterChatCommand('b3dg', function() show[0] = not show[0] end)
         sampRegisterChatCommand('b3d',  function() on = not on; say(on and 'hidup' or 'mati') end)
         sampRegisterChatCommand('b3dl', function(a) local n=(a and a~='') and a or 'model'; local ok2,e2=load(n); say(ok2 and ('dimuat: '..n) or e2) end)
-        sampRegisterChatCommand('b3dm', function() preset=preset%6+1; lib.b3d_orient(preset); say('orientasi '..preset..'/6') end)
-        sampRegisterChatCommand('b3dy', function(a) YAWOFF=num(a,math.pi); say('hadap '..YAWOFF) end)
-        sampRegisterChatCommand('b3ds', function(a) SIZE=num(a,1); say('ukuran '..SIZE) end)
-        sampRegisterChatCommand('b3dv', function(a) FLAP=num(a,8); say('kepak '..FLAP) end)
-        sampRegisterChatCommand('b3dr', function(a) ROLL=num(a,0.5); say('miring belok '..ROLL) end)
-        sampRegisterChatCommand('b3dw', function(a) WR=num(a,0.8); say('radius jelajah '..WR) end)
-        sampRegisterChatCommand('b3dk', function(a) MAXV=num(a,22); say('kecepatan maks '..MAXV) end)
-        sampRegisterChatCommand('b3dd', function(a)
-            local s,u,f=tostring(a):match('(%-?[%d%.]+)%s+(%-?[%d%.]+)%s*(%-?[%d%.]*)')
-            if s then SIDE,UP=tonumber(s),tonumber(u); FWD=tonumber(f) or FWD end
-            say(string.format('posisi: kanan %.2f, atas %.2f, depan %.2f',SIDE,UP,FWD))
-        end)
         ready = true
-        say('OK. /b3dl nama /b3ds /b3dd /b3dv /b3dy /b3dm /b3d')
+        say('OK. /b3dg = GUI slider, /b3dl nama = ganti model')
     end)
     if not ok then say('ERR: '..tostring(err)) end
     while true do wait(1000) end
