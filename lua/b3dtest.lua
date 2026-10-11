@@ -12,14 +12,14 @@ local S = MONET_DPI_SCALE or 1
 local lib, ready, on, errShown = nil, false, true, false
 local preset = 6
 local K = {SIZE=1, FLAP=500, MAXV=22, CHASE=10, ACCEL=3.5, WR=0.8, SIDE=1.2, UP=1.0, FWD=-0.5,
-           BOB=0.05, PIT=0.15, TILT=0.25, CLIMB=0.04, ROLL=0.5, YAWOFF=math.pi, SWAY_LR=0.35, SWAY_UD=0.25}
+           BOB=0.05, PIT=0.15, TILT=0.25, CLIMB=0.04, ROLL=0.5, YAWOFF=math.pi, SWAY_LR=0.35, SWAY_UD=0.25, FOLL=6}
 local ITEMS = {
     {'SIZE',0.1,3,'ukuran'}, {'FLAP',0,1000,'kecepatan kepak'}, {'MAXV',1,80,'kecepatan terbang maks'},
     {'CHASE',1,30,'kuat mengejar target'}, {'ACCEL',1,15,'akselerasi'}, {'WR',0,3,'radius jelajah'},
     {'SIDE',-3,3,'posisi kanan'}, {'UP',0,3,'posisi atas'}, {'FWD',-3,3,'posisi depan'},
     {'BOB',0,0.3,'naik-turun badan'}, {'PIT',0,0.6,'goyang kepala'}, {'TILT',0,0.8,'condong saat melaju'},
     {'CLIMB',0,0.15,'dongak saat naik'}, {'ROLL',-1.5,1.5,'miring saat belok'}, {'YAWOFF',-3.14,3.14,'arah hadap'},
-    {'SWAY_LR',0,1,'goyang kiri-kanan'}, {'SWAY_UD',0,1,'goyang atas-bawah'},
+    {'SWAY_LR',0,1,'goyang kiri-kanan'}, {'SWAY_UD',0,1,'goyang atas-bawah'}, {'FOLL',0,30,'tarikan ke bahu'},
 }
 local sl = {}
 for _,it in ipairs(ITEMS) do sl[it[1]] = imgui.new.float(K[it[1]]) end
@@ -93,7 +93,7 @@ local function fly(dt)
     local tx,ty,tz=sx+P.vx*0.5+pet.wox, sy+P.vy*0.5+pet.woy, sz+pet.woz
     local ddx,ddy=tx-pet.x,ty-pet.y
     local dl=math.sqrt(ddx*ddx+ddy*ddy)
-    if dl>0.05 then
+    if dl>0.05 and dl<3 then
         local qx,qy=-ddy/dl,ddx/dl
         local amp=clamp(dl*K.SWAY_LR,0,SWAY_LR_MAX)
         local w=math.sin(T*1.7+pet.seed)*0.6+math.sin(T*3.9+pet.seed*2.3)*0.4
@@ -111,6 +111,7 @@ local function fly(dt)
     pet.vz=pet.vz+(uz*want-pet.vz)*a
     pet.vz=pet.vz+math.sin(T*3.1+pet.seed)*0.5*dt
     pet.x=pet.x+pet.vx*dt; pet.y=pet.y+pet.vy*dt; pet.z=pet.z+pet.vz*dt
+    local pk=math.min(1,dt*K.FOLL); pet.x=pet.x+dx*pk; pet.y=pet.y+dy*pk; pet.z=pet.z+dz*pk
     pet.gt=pet.gt-dt
     if pet.gt<=0 then pet.gt=0.25; pet.gz=groundAt(pet.x,pet.y,pet.z+5) or pet.gz end
     if pet.z<pet.gz+0.6 then pet.z=pet.gz+0.6; if pet.vz<0 then pet.vz=0 end end
