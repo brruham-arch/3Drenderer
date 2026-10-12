@@ -10,13 +10,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build armeabi-v7a
+      - name: Build arm64 + armv7
         run: |
-          CXX=$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++
-          $CXX -shared -fPIC -O2 -std=c++17 -fvisibility=hidden -static-libstdc++ -o libb3d.so src/b3d.cpp -lEGL -lGLESv2 -llog -ldl
+          BIN=$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+          FLAGS="-shared -fPIC -O2 -std=c++17 -fvisibility=hidden -static-libstdc++"
+          $BIN/aarch64-linux-android24-clang++ $FLAGS -Wl,-z,max-page-size=16384 \
+            -o libb3d.so src/b3d.cpp -lEGL -lGLESv2 -llog -ldl
+          $BIN/armv7a-linux-androideabi21-clang++ $FLAGS \
+            -o libb3d_v7.so src/b3d.cpp -lEGL -lGLESv2 -llog -ldl
+          file libb3d.so libb3d_v7.so
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest -y --cleanup-tag || true
-          gh release create latest libb3d.so --title latest --notes "auto build"
+          gh release create latest libb3d.so libb3d_v7.so --title latest --notes "auto build"

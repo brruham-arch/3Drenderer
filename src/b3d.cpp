@@ -1,4 +1,5 @@
 // libb3d.so - engine render 3D native GLES2 (M2: model dari luar, tekstur, kamera, animasi GPU)
+#include <unistd.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,12 +39,12 @@ static bool gotHook(void* a, void* repl, void** orig) {
         if (sscanf(line, "%lx-%lx %7s", &s, &e, perm) != 3) continue;
         if (perm[0] != 'r' || perm[2] == 'x') continue;
         int prot = PROT_READ | (perm[1] == 'w' ? PROT_WRITE : 0);
-        for (uintptr_t p = s; p + 4 <= e; p += 4) {
+        for (uintptr_t p = s; p + sizeof(uintptr_t) <= e; p += sizeof(uintptr_t)) {
             if ((*(uintptr_t*)p & ~(uintptr_t)1) == tgt) {
-                uintptr_t pg = p & ~(uintptr_t)4095;
-                mprotect((void*)pg, 4096, PROT_READ | PROT_WRITE);
+                uintptr_t pg = p & ~((uintptr_t)sysconf(_SC_PAGESIZE) - 1);
+                mprotect((void*)pg, sysconf(_SC_PAGESIZE), PROT_READ | PROT_WRITE);
                 *(uintptr_t*)p = (uintptr_t)repl;
-                mprotect((void*)pg, 4096, prot);
+                mprotect((void*)pg, sysconf(_SC_PAGESIZE), prot);
                 n++;
             }
         }
