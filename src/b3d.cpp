@@ -19,7 +19,7 @@
 #include "stb_image.h"
 
 #define EXPORT extern "C" __attribute__((visibility("default")))
-#define LOGFILE "/storage/emulated/0/Download/b3d_log.txt"
+#define LOGFILE "/storage/emulated/0/Android/media/com.nezukosamp.game/b3d_log.txt"
 
 static void blog(const char* fmt, ...) {
     char b[512]; va_list a; va_start(a, fmt); vsnprintf(b, sizeof b, fmt, a); va_end(a);
@@ -34,7 +34,7 @@ static bool gotHook(void* a, void* repl, void** orig) {
     if (!m) return false;
     char line[512]; int n = 0;
     while (fgets(line, sizeof line, m)) {
-        if (!strstr(line, "libGTASA.so")) continue;
+        if (!strstr(line, "libGTASA.so") && !strstr(line, "libAlyn_SAMPMOBILE.so")) continue;
         unsigned long s, e; char perm[8];
         if (sscanf(line, "%lx-%lx %7s", &s, &e, perm) != 3) continue;
         if (perm[0] != 'r' || perm[2] == 'x') continue;
@@ -359,15 +359,15 @@ EXPORT int b3d_init(void) {
     if (inited) return 1;
     remove(LOGFILE);
     void* hEGL = dlopen("libEGL.so", RTLD_NOW);
-    if (!hEGL) { blog("ERROR dlopen libEGL"); return 0; }
+    if (!hEGL) { blog("ERROR dlopen libEGL"); return -1; }
     void* a = dlsym(hEGL, "eglSwapBuffers");
-    if (!a) { blog("ERROR sym eglSwapBuffers"); return 0; }
+    if (!a) { blog("ERROR sym eglSwapBuffers"); return -2; }
     void* hD = dlopen("libdobby.so", RTLD_NOW | RTLD_GLOBAL);
     int (*dh)(void*, void*, void**) = hD ? (int (*)(void*, void*, void**))dlsym(hD, "DobbyHook") : nullptr;
     if (dh) {
-        if (dh(a, (void*)h_Swap, (void**)&o_Swap) != 0) { blog("ERROR DobbyHook gagal"); return 0; }
+        if (dh(a, (void*)h_Swap, (void**)&o_Swap) != 0) { blog("ERROR DobbyHook gagal"); return -3; }
         blog("hook via Dobby");
-    } else if (!gotHook(a, (void*)h_Swap, (void**)&o_Swap)) { blog("ERROR libdobby.so tidak ada & GOT gagal"); return 0; }
+    } else if (!gotHook(a, (void*)h_Swap, (void**)&o_Swap)) { blog("ERROR libdobby.so tidak ada & GOT gagal"); return -4; }
     inited = 1;
     blog("b3d_init OK (M2)");
     return 1;
